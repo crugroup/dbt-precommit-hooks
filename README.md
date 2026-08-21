@@ -35,9 +35,26 @@ Unlike `dbt parse`, the templater really connects, so these hooks default to an
 in-process DuckDB profile (`path: ':memory:'`) that needs no server. Only dbt's
 templating uses it; the dialect the rules enforce comes from your `.sqlfluff`, so
 Snowflake and ClickHouse projects are linted as Snowflake and ClickHouse SQL.
-Adapter-dispatched macros (`snowflake__…`, `clickhouse__…`) do fall back to their
+Adapter-dispatched macros (`snowflake__…`, `clickhouse__…`) fall back to their
 `default__` variant while linting — use `--adapter` with a reachable warehouse if
 you need exact fidelity.
+
+Packages that ship warehouse-specific macros only have no `default__` to fall back
+to, so `adapter.dispatch` finds nothing and compilation fails (`dbt_constraints` is
+the usual culprit: `No macro named 'create_primary_key' found within namespace:
+'dbt_constraints'`). For the duration of the run, the hook writes no-op
+`duckdb__…` stubs for those macros into the offending package's own `macros/`
+directory under `dbt_packages/`, so the calls template to empty SQL and the rest of
+the model is linted normally. Requirements and guarantees:
+
+- `dbt deps` must have run — the stubs go next to the installed package.
+- Nothing in your working tree is touched, and the files are deleted afterwards
+  (`dbt deps` would regenerate them away regardless).
+- The stubs are adapter-prefixed, never `default__`, so a real warehouse run never
+  resolves them — on Snowflake, `dbt_constraints.snowflake__create_primary_key`
+  still wins.
+
+Pass `--no-dispatch-shims` (or `DBT_CI_DISPATCH_SHIMS=0`) to turn this off.
 
 Models that query at compile time (`run_query`, `dbt_utils.get_column_values`)
 can't be templated against an empty database. Exclude them with `.sqlfluffignore`,
@@ -65,6 +82,7 @@ Both hooks accept:
 | --- | --- | --- |
 | `--project-dir` | `dbt` | Directory containing `dbt_project.yml`. |
 | `--adapter` | `$DBT_CI_ADAPTER`, else `snowflake` (`duckdb` for the sqlfluff hooks) | Adapter type written into the profile. |
+| `--no-dispatch-shims` | off, unless `DBT_CI_DISPATCH_SHIMS=0` | Skip the no-op stubs for package macros no dispatch can reach (sqlfluff hooks only). |
 | anything else | — | Forwarded verbatim to `dbt parse` / `sqlfluff`. |
 
 ```yaml

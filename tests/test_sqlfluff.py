@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from dbt_precommit_hooks import sqlfluff
+from dbt_precommit_hooks import dispatch_shims, sqlfluff
 
 
 @pytest.fixture(autouse=True)
@@ -139,6 +139,50 @@ def test_explicit_project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     assert sqlfluff.lint(["--project-dir", str(project_dir), "transform/models/a.sql"]) == 0
     assert seen == [str(project_dir.resolve())]
+
+
+def _install_gap_package(project: Path) -> Path:
+    """Install a package whose only implementation is Snowflake specific."""
+    macros_dir = project / "dbt_packages" / "dbt_constraints" / "macros"
+    macros_dir.mkdir(parents=True)
+    (macros_dir / "pk.sql").write_text(
+        "{% macro snowflake__create_primary_key(table, columns) %}select 1{% endmacro %}",
+        encoding="utf-8",
+    )
+    return macros_dir / dispatch_shims.SHIM_FILENAME
+
+
+def test_shims_exist_only_while_sqlfluff_runs(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shim_file = _install_gap_package(project)
+    during: list[bool] = []
+    monkeypatch.setattr(
+        sqlfluff.subprocess,
+        "call",
+        lambda cmd, env=None, **kwargs: during.append(shim_file.is_file()) or 0,
+    )
+
+    sqlfluff.lint(["dbt/models/a.sql"])
+
+    assert during == [True]
+    assert not shim_file.exists()
+
+
+def test_dispatch_shims_can_be_disabled(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    shim_file = _install_gap_package(project)
+    during: list[bool] = []
+    monkeypatch.setattr(
+        sqlfluff.subprocess,
+        "call",
+        lambda cmd, env=None, **kwargs: during.append(shim_file.is_file()) or 0,
+    )
+
+    sqlfluff.lint(["--no-dispatch-shims", "dbt/models/a.sql"])
+    monkeypatch.setenv("DBT_CI_DISPATCH_SHIMS", "0")
+    sqlfluff.lint(["dbt/models/a.sql"])
+
+    assert during == [False, False]
 
 
 def test_no_filenames_is_a_no_op(project: Path, recorder: list[dict]) -> None:

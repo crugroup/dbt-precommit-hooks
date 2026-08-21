@@ -22,6 +22,7 @@ import yaml
 CI_TARGET = "ci"
 DEFAULT_ADAPTER = "snowflake"
 DEFAULT_PROJECT_DIR = "dbt"
+DISABLED_VALUES = frozenset({"0", "false", "no", "off"})
 
 ADAPTER_OUTPUTS: dict[str, dict[str, Any]] = {
     # An in-process DuckDB is the only adapter that can satisfy a hook which
@@ -67,13 +68,17 @@ def build_profile(profile_name: str, adapter: str) -> dict[str, Any]:
     }
 
 
-def read_profile_name(project_file: Path) -> str:
-    """Read the ``profile`` key out of ``dbt_project.yml``."""
+def read_project(project_file: Path) -> dict[str, Any]:
+    """Load ``dbt_project.yml``, failing the hook if it is not there."""
     if not project_file.is_file():
         raise SystemExit(f"dbt-precommit-hooks: {project_file} not found")
 
-    project = yaml.safe_load(project_file.read_text(encoding="utf-8")) or {}
-    profile_name = project.get("profile")
+    return yaml.safe_load(project_file.read_text(encoding="utf-8")) or {}
+
+
+def read_profile_name(project_file: Path) -> str:
+    """Read the ``profile`` key out of ``dbt_project.yml``."""
+    profile_name = read_project(project_file).get("profile")
     if not profile_name:
         raise SystemExit(f"dbt-precommit-hooks: {project_file} does not declare a 'profile' key")
     return str(profile_name)
@@ -110,5 +115,14 @@ def base_parser(
         default=os.environ.get("DBT_CI_ADAPTER", default_adapter),
         choices=sorted(ADAPTER_OUTPUTS),
         help=f"Adapter type for the generated profile (default: {default_adapter}).",
+    )
+    parser.add_argument(
+        "--no-dispatch-shims",
+        action="store_true",
+        default=os.environ.get("DBT_CI_DISPATCH_SHIMS", "1").lower() in DISABLED_VALUES,
+        help=(
+            "Do not stub package macros that no adapter dispatch can reach "
+            "(DBT_CI_DISPATCH_SHIMS=0 does the same)."
+        ),
     )
     return parser

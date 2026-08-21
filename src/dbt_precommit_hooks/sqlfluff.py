@@ -12,6 +12,11 @@ profile full of unreachable placeholder credentials is not enough -- it fails wi
 uses an in-process DuckDB, which connects without a server, credentials or
 network. The SQL dialect the rules enforce is unaffected: that comes from the
 consumer's ``.sqlfluff``.
+
+Templating through a different adapter than the project really uses does break
+``adapter.dispatch`` for packages that ship warehouse specific macros only, so
+:mod:`dbt_precommit_hooks.dispatch_shims` stubs those out for the duration of the
+run.
 """
 
 from __future__ import annotations
@@ -19,7 +24,9 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from contextlib import nullcontext
 
+from dbt_precommit_hooks.dispatch_shims import dispatch_shims
 from dbt_precommit_hooks.profiles import (
     CI_TARGET,
     base_parser,
@@ -56,7 +63,9 @@ def _run(subcommand: str, argv: list[str] | None) -> int:
     project_dir = args.project_dir.resolve()
     profile_name = read_profile_name(project_dir / "dbt_project.yml")
 
-    with ci_profiles_dir(profile_name, args.adapter) as profiles_dir:
+    shims = nullcontext([]) if args.no_dispatch_shims else dispatch_shims(project_dir, args.adapter)
+
+    with ci_profiles_dir(profile_name, args.adapter) as profiles_dir, shims:
         return subprocess.call(
             ["sqlfluff", subcommand, "--templater", "dbt", *extra, *args.paths],
             env={
