@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dbt-precommit-hooks"
+version = "0.1.0"
+description = "Shared pre-commit hooks for dbt projects"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "Marcin Szymanski", email = "ms32035@gmail.com" }]
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+dbt-compile = "dbt_precommit_hooks.dbt_compile:main"
+sqlfluff-lint = "dbt_precommit_hooks.sqlfluff:lint"
+sqlfluff-fix = "dbt_precommit_hooks.sqlfluff:fix"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dbt_precommit_hooks"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
