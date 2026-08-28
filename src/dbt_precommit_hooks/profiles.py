@@ -1,6 +1,6 @@
 """Throwaway dbt profiles for hooks that must not touch a warehouse.
 
-Both ``dbt parse`` and SQLFluff's dbt templater refuse to run without a valid
+``dbt parse``, ``dbt lint`` and ``dbt format`` all refuse to run without a valid
 profile for the project's adapter, which is exactly what CI machines and
 developer laptops tend not to have. The helpers here generate one with
 placeholder credentials in a temporary directory. Nothing connects, so the
@@ -22,12 +22,8 @@ import yaml
 CI_TARGET = "ci"
 DEFAULT_ADAPTER = "snowflake"
 DEFAULT_PROJECT_DIR = "dbt"
-DISABLED_VALUES = frozenset({"0", "false", "no", "off"})
 
 ADAPTER_OUTPUTS: dict[str, dict[str, Any]] = {
-    # An in-process DuckDB is the only adapter that can satisfy a hook which
-    # really does open a connection (SQLFluff's dbt templater does). It needs no
-    # server, no credentials and no network.
     "duckdb": {
         "path": ":memory:",
         "schema": "main",
@@ -95,9 +91,7 @@ def ci_profiles_dir(profile_name: str, adapter: str) -> Iterator[Path]:
         yield Path(profiles_dir)
 
 
-def base_parser(
-    prog: str, description: str, default_adapter: str = DEFAULT_ADAPTER
-) -> argparse.ArgumentParser:
+def base_parser(prog: str, description: str) -> argparse.ArgumentParser:
     """Return a parser with the options every hook in this repo accepts."""
     parser = argparse.ArgumentParser(
         prog=prog,
@@ -112,17 +106,8 @@ def base_parser(
     )
     parser.add_argument(
         "--adapter",
-        default=os.environ.get("DBT_CI_ADAPTER", default_adapter),
+        default=os.environ.get("DBT_CI_ADAPTER", DEFAULT_ADAPTER),
         choices=sorted(ADAPTER_OUTPUTS),
-        help=f"Adapter type for the generated profile (default: {default_adapter}).",
-    )
-    parser.add_argument(
-        "--no-dispatch-shims",
-        action="store_true",
-        default=os.environ.get("DBT_CI_DISPATCH_SHIMS", "1").lower() in DISABLED_VALUES,
-        help=(
-            "Do not stub package macros that no adapter dispatch can reach "
-            "(DBT_CI_DISPATCH_SHIMS=0 does the same)."
-        ),
+        help=f"Adapter type for the generated profile (default: {DEFAULT_ADAPTER}).",
     )
     return parser

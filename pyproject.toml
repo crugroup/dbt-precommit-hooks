@@ -14,8 +14,8 @@ dependencies = ["PyYAML>=6.0"]
 
 [project.scripts]
 dbt-compile = "dbt_precommit_hooks.dbt_compile:main"
-sqlfluff-lint = "dbt_precommit_hooks.sqlfluff:lint"
-sqlfluff-fix = "dbt_precommit_hooks.sqlfluff:fix"
+dbt-lint = "dbt_precommit_hooks.dbt_lint:lint"
+dbt-format = "dbt_precommit_hooks.dbt_lint:format_"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dbt_precommit_hooks"]

@@ -8,30 +8,33 @@
   pass_filenames: false
   files: \.(sql|yml|yaml)$
   additional_dependencies:
-    - dbt-core==2.0.0b2
+    - dbt==2.0.0rc212
     - msgpack
     - mashumaro
 
-- id: sqlfluff-lint
-  name: sqlfluff lint (dbt templater)
+- id: dbt-lint
+  name: dbt lint
   description: >-
-    Lint dbt models with SQLFluff's dbt templater against a throwaway CI profile.
+    Lint dbt models with the dbt Fusion linter against a throwaway CI profile.
     No warehouse connection is made.
-  entry: sqlfluff-lint
+  entry: dbt-lint
   language: python
   types: [sql]
   additional_dependencies:
-    - sqlfluff-templater-dbt==4.3.0
-    - dbt-core~=1.12.0
-    - dbt-duckdb~=1.11.0
+    - dbt==2.0.0rc212
+    - msgpack
+    - mashumaro
 
-- id: sqlfluff-fix
-  name: sqlfluff fix (dbt templater)
-  description: Same as sqlfluff-lint, but applies fixes in place.
-  entry: sqlfluff-fix
+- id: dbt-format
+  name: dbt format
+  description: >-
+    Format the project's SQL in place with the dbt Fusion formatter against a
+    throwaway CI profile. No warehouse connection is made.
+  entry: dbt-format
   language: python
-  types: [sql]
+  pass_filenames: false
+  files: \.sql$
   additional_dependencies:
-    - sqlfluff-templater-dbt==4.3.0
-    - dbt-core~=1.12.0
-    - dbt-duckdb~=1.11.0
+    - dbt==2.0.0rc212
+    - msgpack
+    - mashumaro

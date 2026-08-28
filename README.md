@@ -13,8 +13,8 @@ repos:
     rev: v0.1.0
     hooks:
       - id: dbt-compile
-      - id: sqlfluff-lint
-      - id: sqlfluff-fix
+      - id: dbt-lint
+      - id: dbt-format
 ```
 
 ## `dbt-compile`
@@ -25,69 +25,74 @@ Runs `dbt parse` on dbt Fusion, validating the whole project graph: Jinja,
 Supported `--adapter` values are `snowflake` (default), `clickhouse` and `duckdb`;
 `DBT_CI_ADAPTER` sets it too. Anything else fails fast.
 
-## `sqlfluff-lint` and `sqlfluff-fix`
+## `dbt-lint` and `dbt-format`
 
-Run SQLFluff with the **dbt templater**, so rules see compiled SQL rather than raw
-Jinja. `sqlfluff-fix` rewrites files in place, so pre-commit reports a failure the
-first time it changes something — review the diff and commit again.
+Run Fusion's native `dbt lint` and `dbt format`. Both resolve the project graph
+first, so rules see `ref`, `source` and macros expanded rather than raw Jinja, and
+neither opens a warehouse connection. No second dbt installation and no templater
+are involved — the same `dbt` binary that backs `dbt-compile` does the work.
 
-Unlike `dbt parse`, the templater really connects, so these hooks default to an
-in-process DuckDB profile (`path: ':memory:'`) that needs no server. Only dbt's
-templating uses it; the dialect the rules enforce comes from your `.sqlfluff`, so
-Snowflake and ClickHouse projects are linted as Snowflake and ClickHouse SQL.
-Adapter-dispatched macros (`snowflake__…`, `clickhouse__…`) fall back to their
-`default__` variant while linting — use `--adapter` with a reachable warehouse if
-you need exact fidelity.
+They are SQLFluff-compatible: rules and layout come from your `.sqlfluff` (the
+nearest one, found by walking up the project tree), paths are excluded with
+`.sqlfluffignore`, rule codes are unchanged (`CP01`, `LT04`, …) and `-- noqa`
+comments are respected.
 
-Packages that ship warehouse-specific macros only have no `default__` to fall back
-to, so `adapter.dispatch` finds nothing and compilation fails (`dbt_constraints` is
-the usual culprit: `No macro named 'create_primary_key' found within namespace:
-'dbt_constraints'`). For the duration of the run, the hook writes no-op
-`duckdb__…` stubs for those macros into the offending package's own `macros/`
-directory under `dbt_packages/`, so the calls template to empty SQL and the rest of
-the model is linted normally. Requirements and guarantees:
+### `pyproject.toml` config
 
-- `dbt deps` must have run — the stubs go next to the installed package.
-- Nothing in your working tree is touched, and the files are deleted afterwards
-  (`dbt deps` would regenerate them away regardless).
-- The stubs are adapter-prefixed, never `default__`, so a real warehouse run never
-  resolves them — on Snowflake, `dbt_constraints.snowflake__create_primary_key`
-  still wins.
+Fusion reads `.sqlfluff` files only — it ignores `[tool.sqlfluff…]` in
+`pyproject.toml`, which stock SQLFluff honoured. The hooks bridge that gap without
+putting a `.sqlfluff` in your working tree:
 
-Pass `--no-dispatch-shims` (or `DBT_CI_DISPATCH_SHIMS=0`) to turn this off.
+- `dbt-lint` renders the `[tool.sqlfluff…]` tables into a `.sqlfluff` in a temporary
+  directory and passes it as `--config`, so the whole config applies.
+- `dbt-format` takes no `--config`, so its layout settings are translated into the
+  `-l` flags it does accept: `tab_space_size` → `indent`, `max_line_length` →
+  `line-length`, `[tool.sqlfluff.layout.type.comma] line_position` → `commas`.
 
-Models that query at compile time (`run_query`, `dbt_utils.get_column_values`)
-can't be templated against an empty database. Exclude them with `.sqlfluffignore`,
-or set `dbt_skip_compilation_error = True` under `[sqlfluff:templater:dbt]`.
+The nearest `pyproject.toml` with a `[tool.sqlfluff]` table wins, found by walking up
+from the project directory. An explicit `--config` (or `-l`) in the hook's `args`
+takes precedence and disables the translation. A real `.sqlfluff` needs nothing —
+Fusion finds it in either the project directory or the repo root.
 
-SQLFluff's dbt templater imports dbt Core internals that Fusion does not expose
-([dbt-fusion#11](https://github.com/dbt-labs/dbt-fusion/issues/11)), so these
-hooks pin dbt Core 1.x. pre-commit gives every hook its own virtualenv, so
-`dbt-compile` keeps running Fusion regardless:
+Fusion warns `SQLFluff templater 'jinja' is not supported` unless a discovered
+`.sqlfluff` sets `templater = dbt`; a `--config` file does not silence it. The warning
+is cosmetic — Fusion always uses its own dbt templater.
 
-```yaml
-  - sqlfluff-templater-dbt==4.3.0
-  - dbt-core~=1.12.0
-  - dbt-duckdb~=1.11.0
-```
+The adapter written into the generated profile decides the SQL dialect, so keep
+`--adapter` matching the real warehouse (default `snowflake`).
 
-Overriding `additional_dependencies` *replaces* that list, so restate all of it
-when swapping the adapter.
+`dbt-lint` receives the staged SQL files from pre-commit. `dbt-format` rewrites
+files in place; because the CLI takes only one file per invocation, the hook runs
+once over the **whole project** instead of once per staged file. pre-commit
+compares file hashes itself, so it reports a failure the first time formatting
+changes anything — review the diff and commit again.
+
+`dbt deps` must have run: linting parses the project, so missing packages fail the
+hook.
+
+Useful pass-through flags:
+
+| Flag | Hook | Purpose |
+| --- | --- | --- |
+| `--fix` | `dbt-lint` | Apply auto-fixable rule violations (one pass). |
+| `--rules`, `--exclude-rules` | `dbt-lint` | Comma-separated rule codes, overriding `.sqlfluff`. |
+| `--format json\|github-annotation` | `dbt-lint` | Machine-readable violations. |
+| `--check` | `dbt-format` | Report unformatted files without writing. |
+| `-l line-length=120` | `dbt-format` | Layout overrides (`indent=`, `commas=`, `line-length=`). |
 
 ## Options
 
-Both hooks accept:
+All three hooks accept:
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--project-dir` | `dbt` | Directory containing `dbt_project.yml`. |
-| `--adapter` | `$DBT_CI_ADAPTER`, else `snowflake` (`duckdb` for the sqlfluff hooks) | Adapter type written into the profile. |
-| `--no-dispatch-shims` | off, unless `DBT_CI_DISPATCH_SHIMS=0` | Skip the no-op stubs for package macros no dispatch can reach (sqlfluff hooks only). |
-| anything else | — | Forwarded verbatim to `dbt parse` / `sqlfluff`. |
+| `--adapter` | `$DBT_CI_ADAPTER`, else `snowflake` | Adapter type written into the profile. |
+| anything else | — | Forwarded verbatim to `dbt parse` / `dbt lint` / `dbt format`. |
 
 ```yaml
-      - id: sqlfluff-lint
-        args: [--project-dir, transform, --dialect, snowflake]
+      - id: dbt-lint
+        args: [--project-dir, transform, --exclude-rules, "LT02,ST06"]
 ```
 
 ## Development

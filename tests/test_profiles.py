@@ -57,12 +57,10 @@ def test_ci_profiles_dir_writes_and_cleans_up() -> None:
 
 def test_base_parser_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DBT_CI_ADAPTER", raising=False)
-    monkeypatch.delenv("DBT_CI_DISPATCH_SHIMS", raising=False)
     args = profiles.base_parser("demo", "demo").parse_args([])
 
     assert args.project_dir == Path("dbt")
     assert args.adapter == "snowflake"
-    assert args.no_dispatch_shims is False
 
 
 def test_base_parser_adapter_env(monkeypatch: pytest.MonkeyPatch) -> None:
