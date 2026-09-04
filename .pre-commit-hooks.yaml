@@ -8,7 +8,7 @@
   pass_filenames: false
   files: \.(sql|yml|yaml)$
   additional_dependencies:
-    - dbt==2.0.0rc212
+    - dbt==2.0.0rc218
     - msgpack
     - mashumaro
 
@@ -21,9 +21,7 @@
   language: python
   types: [sql]
   additional_dependencies:
-    - dbt==2.0.0rc212
-    - msgpack
-    - mashumaro
+    - dbt==2.0.0rc218
 
 - id: dbt-format
   name: dbt format
@@ -35,6 +33,4 @@
   pass_filenames: false
   files: \.sql$
   additional_dependencies:
-    - dbt==2.0.0rc212
-    - msgpack
-    - mashumaro
+    - dbt==2.0.0rc218
