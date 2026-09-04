@@ -9,8 +9,6 @@
   files: \.(sql|yml|yaml)$
   additional_dependencies:
     - dbt==2.0.0rc218
-    - msgpack
-    - mashumaro
 
 - id: dbt-lint
   name: dbt lint
