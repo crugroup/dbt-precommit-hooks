@@ -2,10 +2,11 @@
 
 Shared [pre-commit](https://pre-commit.com/) hooks for dbt projects.
 
-Each hook writes a throwaway `profiles.yml` to a temporary directory, points dbt
-at it, and deletes it afterwards — no warehouse, no credentials. The profile name
+The dbt hooks write a throwaway `profiles.yml` to a temporary directory, point dbt
+at it, and delete it afterwards — no warehouse, no credentials. The profile name
 comes from `profile:` in `dbt_project.yml`, the target is always `ci`, and the
-project is expected in `dbt/` (`--project-dir` to change it).
+project is expected in `dbt/` (`--project-dir` to change it). `dbt-autofix-check`
+reads files only and needs no profile.
 
 ```yaml
 repos:
@@ -15,6 +16,7 @@ repos:
       - id: dbt-compile
       - id: dbt-lint
       - id: dbt-format
+      - id: dbt-autofix-check
 ```
 
 ## `dbt-compile`
@@ -80,15 +82,44 @@ Useful pass-through flags:
 | `--check` | `dbt-format` | Report unformatted files without writing. |
 | `-l line-length=120` | `dbt-format` | Layout overrides (`indent=`, `commas=`, `line-length=`). |
 
+## `dbt-autofix-check`
+
+Runs dbt Labs' [dbt-autofix](https://github.com/dbt-labs/dbt-autofix)
+`deprecations` in dry-run mode and fails if it would change any file, listing each
+pending refactor. Nothing is written.
+
+It catches config drift that `dbt-compile` cannot, because dbt Fusion accepts it
+silently. The typical case is hook spelling, which depends on the file:
+
+| File | Correct key |
+| --- | --- |
+| `dbt_project.yml` | `+pre-hook`, `+post-hook` |
+| model, seed, snapshot YAML `config:`; SQL `config()` | `pre_hook`, `post_hook` |
+
+Fusion runs a model-YAML `pre-hook:` anyway, while dbt Core treats it as an unknown
+key, warns `CustomKeyInConfigDeprecation`, and fails to parse when the hook calls a
+project macro. In `dbt_project.yml` the check flags the reverse, `+pre_hook`.
+
+To apply the fixes it reports:
+
+```bash
+uvx dbt-autofix deprecations --path dbt
+```
+
+By default only fixes that keep behaviour are checked; pass `--behavior-change` or
+`--all` in `args` to check those too. dbt-autofix downloads the dbt Fusion JSON
+schemas from `public.cdn.getdbt.com` on every run, so the hook needs network access;
+`--json-schema-version` pins the schema version.
+
 ## Options
 
-All three hooks accept:
+All hooks accept:
 
-| Flag | Default | Purpose |
-| --- | --- | --- |
-| `--project-dir` | `dbt` | Directory containing `dbt_project.yml`. |
-| `--adapter` | `$DBT_CI_ADAPTER`, else `snowflake` | Adapter type written into the profile. |
-| anything else | — | Forwarded verbatim to `dbt parse` / `dbt lint` / `dbt format`. |
+| Flag            | Default                             | Purpose                                                                                     |
+|-----------------|-------------------------------------|---------------------------------------------------------------------------------------------|
+| `--project-dir` | `dbt`                               | Directory containing `dbt_project.yml`.                                                     |
+| `--adapter`     | `$DBT_CI_ADAPTER`, else `snowflake` | Adapter type written into the profile. Not `dbt-autofix-check`.                             |
+| anything else   | —                                   | Forwarded verbatim to `dbt parse` / `dbt lint` / `dbt format` / `dbt-autofix deprecations`. |
 
 ```yaml
       - id: dbt-lint

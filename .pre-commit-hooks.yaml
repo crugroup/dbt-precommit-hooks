@@ -32,3 +32,16 @@
   files: \.sql$
   additional_dependencies:
     - dbt==2.0.9
+
+- id: dbt-autofix-check
+  name: dbt-autofix (check)
+  description: >-
+    Fail when dbt-autofix would rewrite the project, e.g. a model's YAML using
+    the dbt_project.yml spelling `pre-hook` instead of `pre_hook`. Dry run:
+    nothing is written and no profile is needed.
+  entry: dbt-autofix-check
+  language: python
+  pass_filenames: false
+  files: \.(sql|yml|yaml)$
+  additional_dependencies:
+    - dbt-autofix==0.22.6
