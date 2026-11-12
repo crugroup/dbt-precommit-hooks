@@ -11,7 +11,7 @@ reads files only and needs no profile.
 ```yaml
 repos:
   - repo: https://github.com/crugroup/dbt-precommit-hooks
-    rev: v0.1.0
+    rev: v0.9.0
     hooks:
       - id: dbt-compile
       - id: dbt-lint
